@@ -1,73 +1,24 @@
 const express = require("express");
-const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
+const bodyParser = require("body-parser");
 
 const app = express();
-const http = require("http").createServer(app);
+const server = http.createServer(app);
+const io = new Server(server);
 
-const io = require("socket.io")(http, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+// IMPORTANTE para Render
+const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-
-// 🔥 SERVIR FRONTEND (MUY IMPORTANTE)
+app.use(bodyParser.json());
 app.use(express.static(__dirname));
 
-// 📦 Colas por dispositivo
-let queues = {
+// Cola de mensajes para cada LoRa
+const queues = {
   A: [],
   B: []
 };
 
-// ==============================
-// 📥 Mensaje desde LoRa
-// ==============================
-app.post("/from-lora", (req, res) => {
-  try {
-    const { from, msg } = req.body;
-
-    if (!from || !msg) {
-      console.log("⚠️ Mensaje inválido:", req.body);
-      return res.sendStatus(400);
-    }
-
-    console.log(`📡 ${from} → ${msg}`);
-
-    // Enviar a la web
-    io.emit("nuevo_mensaje", { from, msg });
-
-    res.sendStatus(200);
-
-  } catch (err) {
-    console.log("❌ Error JSON:", err.message);
-    res.sendStatus(500);
-  }
-});
-
-// ==============================
-// 📤 LoRa pide mensajes
-// ==============================
-app.get("/to-lora", (req, res) => {
-  const id = req.query.id;
-
-  if (queues[id] && queues[id].length > 0) {
-    const msg = queues[id].shift();
-
-    console.log(`📤 Enviando a ${id}: ${msg}`);
-
-    res.send(msg);
-  } else {
-    res.send("");
-  }
-});
-
-// ==============================
-// 💬 Mensajes desde Web
-// ==============================
 io.on("connection", (socket) => {
   console.log("💻 Web conectada");
 
@@ -76,21 +27,39 @@ io.on("connection", (socket) => {
 
     console.log(`💬 WEB ${from} → ${to}: ${msg}`);
 
-    // Enviar a LoRa
+    // SOLO se guarda para LoRa (NO se envía directo a web)
     if (queues[to]) {
-      queues[to].push(msg);
+      queues[to].push({ from, msg });
     }
-
-    // Enviar a web
-    io.emit("nuevo_mensaje", { from, msg });
   });
 });
 
-// ==============================
-// 🚀 Iniciar servidor
-// ==============================
-const PORT = process.env.PORT || 3000;
+// 📡 LoRa pide mensajes
+app.get("/to-lora/:id", (req, res) => {
+  const id = req.params.id;
 
-http.listen(PORT, () => {
+  if (queues[id] && queues[id].length > 0) {
+    const mensaje = queues[id].shift();
+    console.log(`📤 Enviando a LoRa ${id}:`, mensaje);
+    res.json(mensaje);
+  } else {
+    res.json({ msg: "" });
+  }
+});
+
+// 📡 LoRa envía mensajes al servidor
+app.post("/from-lora", (req, res) => {
+  const { from, msg } = req.body;
+
+  console.log(`📡 LoRa ${from} → ${msg}`);
+
+  // 🔥 SOLO aquí se envía a la web
+  io.emit("nuevo_mensaje", { from, msg });
+
+  res.sendStatus(200);
+});
+
+// Servidor
+server.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
 });
