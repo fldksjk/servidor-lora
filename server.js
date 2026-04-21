@@ -17,9 +17,6 @@ let queues = {
   B: []
 };
 
-// 🧠 Control de duplicados
-let recentMessages = new Set();
-
 // 📥 Mensaje desde LoRa
 app.post("/from-lora", (req, res) => {
   try {
@@ -30,18 +27,10 @@ app.post("/from-lora", (req, res) => {
       return res.sendStatus(400);
     }
 
-    const key = from + msg;
-
-    // 🚫 evitar duplicados
-    if (recentMessages.has(key)) {
-      console.log("⚠️ Duplicado LoRa ignorado:", msg);
-      return res.sendStatus(200);
-    }
-
-    recentMessages.add(key);
-    setTimeout(() => recentMessages.delete(key), 3000);
-
     console.log(`📡 ${from} → ${msg}`);
+
+    // 🚫 NO reenviar automáticamente (evita bucles)
+    console.log("➡️ Mensaje recibido desde LoRa (no se reenvía)");
 
     // enviar a web
     io.emit("nuevo_mensaje", { from, msg });
@@ -76,29 +65,15 @@ io.on("connection", (socket) => {
   socket.on("enviar_mensaje", (data) => {
     const { from, to, msg } = data;
 
-    const key = from + msg;
-
-    // 🚫 evitar duplicados
-    if (recentMessages.has(key)) {
-      console.log("⚠️ Duplicado WEB ignorado:", msg);
-      return;
-    }
-
-    recentMessages.add(key);
-    setTimeout(() => recentMessages.delete(key), 3000);
-
     console.log(`💬 WEB ${from} → ${to}: ${msg}`);
 
-    // guardar para LoRa destino
     queues[to].push(msg);
 
-    // enviar a todas las webs
     io.emit("nuevo_mensaje", { from, msg });
   });
 });
 
-// 🧪 RUTAS DE PRUEBA
-
+// 🧪 Rutas de prueba
 app.get("/sendA", (req, res) => {
   const msg = "Mensaje para A";
 
@@ -121,10 +96,12 @@ app.get("/sendB", (req, res) => {
 
 // raíz
 app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/index.html");
+  res.send("Servidor LoRa funcionando 🚀");
 });
 
-// 🚀 iniciar servidor
-http.listen(3000, () => {
-  console.log("🚀 Servidor corriendo en puerto 3000");
+// 🔥 PUERTO DINÁMICO (CLAVE PARA RENDER)
+const PORT = process.env.PORT || 3000;
+
+http.listen(PORT, () => {
+  console.log("🚀 Servidor corriendo en puerto " + PORT);
 });
