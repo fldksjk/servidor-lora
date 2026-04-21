@@ -5,11 +5,17 @@ const app = express();
 const http = require("http").createServer(app);
 
 const io = require("socket.io")(http, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
 });
 
 app.use(cors());
 app.use(express.json());
+
+// 🔥 SERVIR FRONTEND (MUY IMPORTANTE)
+app.use(express.static(__dirname));
 
 // 📦 Colas por dispositivo
 let queues = {
@@ -17,7 +23,9 @@ let queues = {
   B: []
 };
 
+// ==============================
 // 📥 Mensaje desde LoRa
+// ==============================
 app.post("/from-lora", (req, res) => {
   try {
     const { from, msg } = req.body;
@@ -29,10 +37,7 @@ app.post("/from-lora", (req, res) => {
 
     console.log(`📡 ${from} → ${msg}`);
 
-    // 🚫 NO reenviar automáticamente (evita bucles)
-    console.log("➡️ Mensaje recibido desde LoRa (no se reenvía)");
-
-    // enviar a web
+    // Enviar a la web
     io.emit("nuevo_mensaje", { from, msg });
 
     res.sendStatus(200);
@@ -43,7 +48,9 @@ app.post("/from-lora", (req, res) => {
   }
 });
 
+// ==============================
 // 📤 LoRa pide mensajes
+// ==============================
 app.get("/to-lora", (req, res) => {
   const id = req.query.id;
 
@@ -58,7 +65,9 @@ app.get("/to-lora", (req, res) => {
   }
 });
 
-// 💬 Mensajes desde web
+// ==============================
+// 💬 Mensajes desde Web
+// ==============================
 io.on("connection", (socket) => {
   console.log("💻 Web conectada");
 
@@ -67,41 +76,21 @@ io.on("connection", (socket) => {
 
     console.log(`💬 WEB ${from} → ${to}: ${msg}`);
 
-    queues[to].push(msg);
+    // Enviar a LoRa
+    if (queues[to]) {
+      queues[to].push(msg);
+    }
 
+    // Enviar a web
     io.emit("nuevo_mensaje", { from, msg });
   });
 });
 
-// 🧪 Rutas de prueba
-app.get("/sendA", (req, res) => {
-  const msg = "Mensaje para A";
-
-  console.log("🧪 Test → A:", msg);
-
-  queues["A"].push(msg);
-
-  res.send("Enviado a A");
-});
-
-app.get("/sendB", (req, res) => {
-  const msg = "Mensaje para B";
-
-  console.log("🧪 Test → B:", msg);
-
-  queues["B"].push(msg);
-
-  res.send("Enviado a B");
-});
-
-// raíz
-app.get("/", (req, res) => {
-  res.send("Servidor LoRa funcionando 🚀");
-});
-
-// 🔥 PUERTO DINÁMICO (CLAVE PARA RENDER)
+// ==============================
+// 🚀 Iniciar servidor
+// ==============================
 const PORT = process.env.PORT || 3000;
 
 http.listen(PORT, () => {
-  console.log("🚀 Servidor corriendo en puerto " + PORT);
+  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
 });
